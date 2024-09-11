@@ -1,0 +1,13 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+gymnasium = { version = "1.0.0a2", extras = ["box2d"] }
+keyboard = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"
