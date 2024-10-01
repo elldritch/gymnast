@@ -3,9 +3,14 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+url = "https://download.pytorch.org/whl/cu124"
+verify_ssl = true
+name = "downloadpytorch"
+
 [packages]
 gymnasium = { version = "1.0.0a2", extras = ["box2d"] }
-keyboard = "*"
+torch = {version = "*", index = "downloadpytorch"}
 
 [dev-packages]
 
