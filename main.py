@@ -1,3 +1,4 @@
+import time
 import gymnasium as gym
 
 import numpy as np
@@ -22,9 +23,8 @@ class NeuralNet(nn.Module):
 
 
 def explore_one_episode(
-    env_id: str, model: NeuralNet, render=False
+    env: gym.Env, model: NeuralNet
 ) -> tuple[list[np.ndarray], list[int], list[np.float64]]:
-    env = gym.make(env_id, render_mode="human" if render else None)
     observations: list[np.ndarray] = []
     actions: list = []
     rewards: list = []
@@ -33,9 +33,6 @@ def explore_one_episode(
     observation, _ = env.reset()
     episode_over = False
     while not episode_over:
-        if render:
-            env.render()
-
         observations.append(observation.copy())
 
         action = model.predict(torch.from_numpy(observation).to("cuda")).sample().item()
@@ -46,13 +43,11 @@ def explore_one_episode(
 
         episode_over = terminated or truncated
 
-    env.close()
-
     return (observations, actions, rewards)
 
 
 def train_one_epoch(
-    env_id: str,
+    env: gym.Env,
     model: NeuralNet,
     optimizer: torch.optim.Optimizer,  # pyright: ignore [reportPrivateImportUsage]
     epoch_batch_size=5000,
@@ -62,11 +57,10 @@ def train_one_epoch(
     returns: list = []
     durations: list = []
     weights: list = []
-    render = True
 
     while len(observations) < epoch_batch_size:
         episode_observations, episode_actions, episode_rewards = explore_one_episode(
-            env_id, model, render
+            env, model
         )
         episode_return = sum(episode_rewards)
         duration = len(episode_rewards)
@@ -76,7 +70,6 @@ def train_one_epoch(
         returns.append(episode_return)
         durations.append(duration)
         weights += [episode_return] * duration
-        render = False
 
     observations_tensor: torch.Tensor = torch.from_numpy(
         np.stack(observations, axis=0)
@@ -99,22 +92,32 @@ if __name__ == "__main__":
     batch_size = 5000
     learning_rate = 1e-2
 
-    # Initialize model and optimizer.
-    env: gym.Env = gym.make(env_id, render_mode="human")
+    # Initialize environment.
+    env: gym.Env = gym.make(env_id, render_mode=None)
     observation_dim: int = (
         env.observation_space.shape  # pyright: ignore [reportOptionalSubscript]
     )[0]
     actions_dim: int = (
         env.action_space.n  # pyright: ignore [reportAttributeAccessIssue]
     )
+
+    # Initialize model and optimizer.
     model = NeuralNet([observation_dim, 32, actions_dim]).to("cuda")
     optimizer = torch.optim.Adam(  # pyright: ignore [reportPrivateImportUsage]
         model.parameters(), lr=1e-3
     )
 
     # Run training.
-    print(f" Epoch | {"Loss":8} | {"Return":8} | Duration")
+    print(f" Epoch | {"Loss":>8} | {"Return":>8} | Duration")
     for i in range(epochs):
-        loss, returns, durations = train_one_epoch(env_id, model, optimizer, batch_size)
+        loss, returns, durations = train_one_epoch(env, model, optimizer, batch_size)
+        print(f" {i:5d} | {loss:>5.3f} | {np.mean(returns):>5.3f} | {np.mean(durations):>5.3f}")
+    env.close()
 
-        print(f" {i:5d} | {loss:5.3f} | {np.mean(returns):5.3f} | {np.mean(durations):5.3f}")
+    # Run final model.
+    env = gym.make(env_id, render_mode="human")
+    explore_one_episode(env, model)
+    env.close()
+
+    # Save results.
+    torch.save(model.state_dict(), f"model_{time.time()}.pt")
