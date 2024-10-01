@@ -1,3 +1,4 @@
+import argparse
 import time
 import gymnasium as gym
 
@@ -23,7 +24,7 @@ class NeuralNet(nn.Module):
 
 
 def explore_one_episode(
-    env: gym.Env, model: NeuralNet
+    env: gym.Env, model: NeuralNet, verbose: bool = False
 ) -> tuple[list[np.ndarray], list[int], list[np.float64]]:
     observations: list[np.ndarray] = []
     actions: list = []
@@ -41,6 +42,30 @@ def explore_one_episode(
         observation, reward, terminated, truncated, _ = env.step(action)
         rewards.append(reward)
 
+        if verbose:
+            action_name = (
+                "_"
+                if action == 0
+                else (
+                    ">"
+                    if action == 1
+                    else "^" if action == 2 else "<" if action == 3 else "ERROR"
+                )
+            )
+            l = (
+                "L"
+                if observation[6] == 1.0
+                else " " if observation[6] == 0.0 else "ERROR"
+            )
+            r = (
+                "R"
+                if observation[7] == 1.0
+                else " " if observation[7] == 0.0 else "ERROR"
+            )
+            print(
+                f"x: {observation[0]: .3f} y: {observation[1]: .3f} x': {observation[2]: .3f} y': {observation[3]: .3f} θ: {observation[4]: .3f} ω: {observation[5]: .3f} {l} {r} reward: {reward: 8.3f} action: {action_name}"
+            )
+
         episode_over = terminated or truncated
 
     return (observations, actions, rewards)
@@ -50,7 +75,7 @@ def train_one_epoch(
     env: gym.Env,
     model: NeuralNet,
     optimizer: torch.optim.Optimizer,  # pyright: ignore [reportPrivateImportUsage]
-    epoch_batch_size=5000,
+    epoch_batch_size: int = 5000,
 ):
     observations: list[np.ndarray] = []
     actions: list[int] = []
@@ -78,40 +103,59 @@ def train_one_epoch(
     weights_tensor: torch.Tensor = torch.as_tensor(weights).to("cuda")
 
     optimizer.zero_grad()
-    loss: torch.Tensor = -(model.predict(observations_tensor).log_prob(actions_tensor) * weights_tensor).mean()
+    loss: torch.Tensor = -(
+        model.predict(observations_tensor).log_prob(actions_tensor) * weights_tensor
+    ).mean()
     loss.backward()
     optimizer.step()
 
     return (loss, returns, durations)
 
 
-if __name__ == "__main__":
-    # Hyperparameters.
-    env_id = "LunarLander-v3"
-    epochs = 50
-    batch_size = 5000
-    learning_rate = 1e-2
-
-    # Initialize environment.
-    env: gym.Env = gym.make(env_id, render_mode=None)
+def dimensions(env: gym.Env) -> tuple[int, int]:
     observation_dim: int = (
         env.observation_space.shape  # pyright: ignore [reportOptionalSubscript]
     )[0]
     actions_dim: int = (
         env.action_space.n  # pyright: ignore [reportAttributeAccessIssue]
     )
+    return (observation_dim, actions_dim)
+
+
+def cmd_train(
+    env_id: str,
+    seed: int | None,
+    epochs: int,
+    batch_size: int,
+    learning_rate: float,
+    hidden_layers: list[int],
+    save_to: str,
+):
+    # Initialize environment.
+    env: gym.Env = gym.make(env_id, render_mode=None)
+    (observation_dim, actions_dim) = dimensions(env)
+
+    # Set seeds.
+    torch.use_deterministic_algorithms(True)
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        env.reset(seed=seed)
 
     # Initialize model and optimizer.
-    model = NeuralNet([observation_dim, 32, actions_dim]).to("cuda")
+    model = NeuralNet([observation_dim] + hidden_layers + [actions_dim]).to("cuda")
+    model.load_state_dict(torch.load("model_1727759757.189204.pt"))
     optimizer = torch.optim.Adam(  # pyright: ignore [reportPrivateImportUsage]
-        model.parameters(), lr=1e-3
+        model.parameters(), lr=learning_rate
     )
 
     # Run training.
     print(f" Epoch | {"Loss":>8} | {"Return":>8} | Duration")
     for i in range(epochs):
         loss, returns, durations = train_one_epoch(env, model, optimizer, batch_size)
-        print(f" {i:5d} | {loss:>5.3f} | {np.mean(returns):>5.3f} | {np.mean(durations):>5.3f}")
+        print(
+            f" {i: 5d} | {loss: >5.3f} | {np.mean(returns): >5.3f} | {np.mean(durations): >5.3f}"
+        )
     env.close()
 
     # Run final model.
@@ -120,4 +164,56 @@ if __name__ == "__main__":
     env.close()
 
     # Save results.
-    torch.save(model.state_dict(), f"model_{time.time()}.pt")
+    torch.save(model.state_dict(), save_to)
+
+
+def cmd_infer(env_id: str, load_from: str):
+    env: gym.Env = gym.make(env_id, render_mode="human")
+
+    (observation_dim, actions_dim) = dimensions(env)
+    # TODO: Load model parameters too.
+    hidden_layers: list[int] = [64, 64]
+    model = NeuralNet([observation_dim] + hidden_layers + [actions_dim]).to("cuda")
+    model.load_state_dict(torch.load(load_from, weights_only=True))
+    model.eval()
+
+    _, _, rewards = explore_one_episode(env, model, verbose=True)
+    print(f"Return: {sum(rewards)}")
+
+    env.close()
+
+
+if __name__ == "__main__":
+    # Parse hyperparameters.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env", type=str, required=True)
+    parser.add_argument("--seed", type=int, default=None)
+    subparsers = parser.add_subparsers(dest="cmd")
+
+    trainP = subparsers.add_parser("train")
+    trainP.add_argument("--epochs", type=int, default=600)
+    trainP.add_argument("--batch_size", type=int, default=5000)
+    trainP.add_argument("--learning_rate", type=float, default=1e-3)
+    trainP.add_argument("--hidden_layers", type=int, nargs="+", default=[64, 64])
+    trainP.add_argument("--save_to", type=str, required=True)
+    # TODO: Implement resuming training from a saved checkpoint.
+
+    inferP = subparsers.add_parser("infer")
+    inferP.add_argument("--load_from", type=str, required=True)
+
+    args = parser.parse_args()
+
+    if args.cmd == "train":
+        cmd_train(
+            args.env,
+            args.seed,
+            args.epochs,
+            args.batch_size,
+            args.learning_rate,
+            args.hidden_layers,
+            args.save_to,
+        )
+    elif args.cmd == "infer":
+        cmd_infer(args.env, args.load_from)
+    else:
+        raise NotImplementedError(f"Unknown subcommand: {args.cmd}")
