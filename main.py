@@ -257,7 +257,7 @@ def cmd_train(
     # Save checkpoint on keypress.
     current_epoch = start_epoch
 
-    def on_input():
+    def save_progress():
         root, ext = os.path.splitext(save_to)
         save_to_checkpoint_path = f"{root}_checkpoint_{int(time.time())}{ext}"
         print(f"Saving checkpoint to {save_to_checkpoint_path}")
@@ -273,7 +273,7 @@ def cmd_train(
         )
         print(f"Checkpoint saved to {save_to_checkpoint_path}")
 
-    save_listener = InputListener(on_input)
+    save_listener = InputListener(save_progress)
 
     # Run training.
     print(f" Epoch | {"Loss":>12} | {"Return":>12} | {"Duration":>12}")
@@ -284,6 +284,8 @@ def cmd_train(
         print(
             f" {current_epoch:5d} | {loss:>12.3f} | {np.mean(returns):>12.3f} | {np.mean(durations):>12.3f}"
         )
+        if current_epoch % 200 == 0:
+            save_progress()
     print("Done, stopping")
     save_listener.stop()
     print("Stopped")
@@ -298,7 +300,7 @@ def cmd_train(
     torch.save(model.state_dict(), save_to)
 
 
-def cmd_infer(load_from: str):
+def cmd_infer(load_from: str, seed: int | None):
     # Load checkpoint.
     checkpoint = torch.load(load_from, weights_only=True)
 
@@ -306,7 +308,10 @@ def cmd_infer(load_from: str):
     env: gym.Env = gym.make(checkpoint["env_id"], render_mode="human")
 
     # Set seeds.
-    set_seeds(checkpoint["seed"], env)
+    if seed is None:
+        seed = checkpoint["seed"]
+        assert isinstance(seed, int)
+    set_seeds(seed, env)
 
     # Initialize model.
     (observation_dim, actions_dim) = dimensions(env)
@@ -339,6 +344,7 @@ if __name__ == "__main__":
 
     inferP = subparsers.add_parser("infer")
     inferP.add_argument("--load_from", type=str, required=True)
+    inferP.add_argument("--seed", type=int)
 
     args = parser.parse_args()
 
@@ -354,6 +360,6 @@ if __name__ == "__main__":
             args.save_to,
         )
     elif args.cmd == "infer":
-        cmd_infer(args.load_from)
+        cmd_infer(args.load_from, args.seed)
     else:
         raise NotImplementedError(f"Unknown subcommand: {args.cmd}")
