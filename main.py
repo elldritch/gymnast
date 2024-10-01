@@ -250,11 +250,7 @@ def cmd_train(
 
     # Load model from checkpoint.
     if checkpoint is not None:
-        # Hack for backwards compatibility with older checkpoints I've saved.
-        if "model_state_dict" not in checkpoint:
-            model.load_state_dict(checkpoint)
-        else:
-            model.load_state_dict(checkpoint["model_state_dict"])
+        model.load_state_dict(checkpoint["model_state_dict"])
         model.train()
         print(f"Loaded weights from {load_from}")
 
