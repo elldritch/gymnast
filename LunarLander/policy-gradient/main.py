@@ -139,16 +139,21 @@ def dimensions(env: gym.Env) -> tuple[int, int]:
     return (observation_dim, actions_dim)
 
 
-def set_seeds(seed: int, env: gym.Env):
+def set_seeds(seed: int, start_epoch: int, env: gym.Env):
     torch.use_deterministic_algorithms(True)
     torch.manual_seed(seed)
     np.random.seed(seed)
     env.reset(seed=seed)
+    # Otherwise, using the same seed will cause us to replay previously seen
+    # examples when we load from checkpoint.
+    for _ in range(start_epoch):
+        env.reset()
 
 
 def save_checkpoint(
     env_id: str,
     model: nn.Module,
+    optimizer: torch.optim.Optimizer,  # pyright: ignore [reportPrivateImportUsage]
     seed: int,
     epochs: int,
     batch_size: int,
@@ -160,6 +165,7 @@ def save_checkpoint(
         {
             "env_id": env_id,
             "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
             "seed": seed,
             "epochs": epochs,
             "batch_size": batch_size,
@@ -240,7 +246,7 @@ def cmd_train(
     (observation_dim, actions_dim) = dimensions(env)
 
     # Set seeds.
-    set_seeds(seed, env)
+    set_seeds(seed, start_epoch, env)
 
     # Initialize model and optimizer.
     model = NeuralNet([observation_dim] + hidden_layers + [actions_dim]).to("cuda")
@@ -248,10 +254,11 @@ def cmd_train(
         model.parameters(), lr=learning_rate
     )
 
-    # Load model from checkpoint.
+    # Load model and optimizer from checkpoint.
     if checkpoint is not None:
         model.load_state_dict(checkpoint["model_state_dict"])
         model.train()
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         print(f"Loaded weights from {load_from}")
 
     # Save checkpoint on keypress.
@@ -264,6 +271,7 @@ def cmd_train(
         save_checkpoint(
             env_id,
             model,
+            optimizer,
             seed,
             current_epoch,
             batch_size,
@@ -311,7 +319,7 @@ def cmd_infer(load_from: str, seed: int | None):
     if seed is None:
         seed = checkpoint["seed"]
         assert isinstance(seed, int)
-    set_seeds(seed, env)
+    set_seeds(seed, 0, env)
 
     # Initialize model.
     (observation_dim, actions_dim) = dimensions(env)
