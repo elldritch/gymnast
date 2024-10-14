@@ -17,14 +17,15 @@ class InputListener(threading.Thread):
     def __init__(self, callback: Callable):
         super().__init__(daemon=True)
         self.callback = callback
+        self.stop_event = threading.Event()
 
     def run(self):
-        while True:
+        while not self.stop_event.wait(0.1):
             sys.stdin.readline()
             self.callback()
 
     def stop(self):
-        raise SystemExit()
+        self.stop_event.set()
 
 
 class NeuralNet(nn.Module):
@@ -143,7 +144,7 @@ def save_checkpoint(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,  # pyright: ignore [reportPrivateImportUsage]
     seed: int,
-    epochs: int,
+    epoch_index: int,
     batch_size: int,
     learning_rate: float,
     hidden_layers: list[int],
@@ -155,7 +156,7 @@ def save_checkpoint(
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "seed": seed,
-            "epochs": epochs,
+            "epochs": epoch_index + 1,
             "batch_size": batch_size,
             "learning_rate": learning_rate,
             "hidden_layers": hidden_layers,
@@ -275,16 +276,15 @@ def cmd_train(
     print(f" Epoch | {"Loss":>12} | {"Return":>12} | {"Duration":>12}")
     save_listener.start()
     for i in range(epochs):
-        current_epoch = i + start_epoch
         loss, returns, durations = train_one_epoch(env, model, optimizer, batch_size)
+        current_epoch = i + start_epoch
         print(
             f" {current_epoch:5d} | {loss:>12.3f} | {np.mean(returns):>12.3f} | {np.mean(durations):>12.3f}"
         )
         if current_epoch % 200 == 0 and current_epoch > 0:
             save_progress()
-    print("Done, stopping")
+    print("Done")
     save_listener.stop()
-    print("Stopped")
     env.close()
 
     # Run final model.
@@ -294,6 +294,7 @@ def cmd_train(
 
     # Save results.
     torch.save(model.state_dict(), save_to)
+    print(f"Saved weights to {save_to}")
 
 
 def cmd_infer(load_from: str, seed: int | None):
