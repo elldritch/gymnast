@@ -23,7 +23,13 @@ if __name__ == "__main__":
     observation, _ = env.reset()
     episode_over = False
     while not episode_over:
-        action = int(input())
+        print("Input action (0 for none, 1 for left, 2 for up, 3 for right): ", end="")
+        action = input()
+        if action not in ["0", "1", "2", "3"]:
+            print(f"Invalid action: {action}")
+            continue
+        action = int(action)
+
         observation, reward, terminated, truncated, _ = env.step(action)
 
         action_name = (
