@@ -10,6 +10,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from gymnast.LunarLander.lib import print_step
+
 
 class InputListener(threading.Thread):
     def __init__(self, callback: Callable):
@@ -62,28 +64,7 @@ def explore_one_episode(
         rewards.append(np.float64(reward))
 
         if verbose:
-            action_name = (
-                "_"
-                if action == 0
-                else (
-                    "<"
-                    if action == 1
-                    else "^" if action == 2 else ">" if action == 3 else "ERROR"
-                )
-            )
-            r = (
-                "R"
-                if observation[6] == 1.0
-                else " " if observation[6] == 0.0 else "ERROR"
-            )
-            l = (
-                "L"
-                if observation[7] == 1.0
-                else " " if observation[7] == 0.0 else "ERROR"
-            )
-            print(
-                f"x: {observation[0]: .3f} y: {observation[1]: .3f} x': {observation[2]: .3f} y': {observation[3]: .3f} θ: {observation[4]: .3f} ω: {observation[5]: .3f} {r} {l} reward: {reward: 8.3f} action: {action_name}"
-            )
+            print_step(action, observation, reward)
 
         episode_over = terminated or truncated
 
@@ -342,7 +323,7 @@ def cmd_infer(load_from: str, seed: int | None):
     env.close()
 
 
-if __name__ == "__main__":
+def main():
     # Parse hyperparameters.
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="cmd")
@@ -378,3 +359,7 @@ if __name__ == "__main__":
         cmd_infer(args.load_from, args.seed)
     else:
         raise NotImplementedError(f"Unknown subcommand: {args.cmd}")
+
+
+if __name__ == "__main__":
+    main()

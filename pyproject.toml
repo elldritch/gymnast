@@ -3,7 +3,12 @@ name = "gymnast"
 version = "0.1.0"
 readme = "README.md"
 requires-python = "~=3.12"
-dependencies = [
-    "gymnasium[box2d]>=1.0.0",
-    "torch>=2.4.1",
-]
+dependencies = ["gymnasium[box2d]>=1.0.0", "torch>=2.4.1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+lunar-vpg = "gymnast.LunarLander.bin.vpg:main"
+lunar-human = "gymnast.LunarLander.bin.human:main"
