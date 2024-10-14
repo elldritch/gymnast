@@ -106,15 +106,22 @@ def train_one_epoch(
         episode_observations, episode_actions, episode_rewards = explore_one_episode(
             env, model
         )
-        episode_return = sum(episode_rewards)
-        assert type(episode_return) == np.float64
-        duration = len(episode_rewards)
-
         observations += episode_observations
         actions += episode_actions
+        episode_return = sum(episode_rewards)
+        assert type(episode_return) == np.float64
+        episode_duration = len(episode_rewards)
+
         returns.append(episode_return)
-        durations.append(duration)
-        weights += [episode_return] * duration
+        durations.append(episode_duration)
+
+        # Calculating reward-to-go.
+        episode_weights = [np.float64(0)] * episode_duration
+        for i in reversed(range(episode_duration)):
+            episode_weights[i] = episode_rewards[i] + (
+                episode_weights[i + 1] if i + 1 < episode_duration else 0
+            )
+        weights += episode_weights
 
     observations_tensor: torch.Tensor = torch.from_numpy(
         np.stack(observations, axis=0)
@@ -292,7 +299,7 @@ def cmd_train(
         print(
             f" {current_epoch:5d} | {loss:>12.3f} | {np.mean(returns):>12.3f} | {np.mean(durations):>12.3f}"
         )
-        if current_epoch % 200 == 0:
+        if current_epoch % 200 == 0 and current_epoch > 0:
             save_progress()
     print("Done, stopping")
     save_listener.stop()
