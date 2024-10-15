@@ -12,4 +12,4 @@ build-backend = "hatchling.build"
 [project.scripts]
 lunar-vpg = "gymnast.LunarLander.bin.vpg:main"
 lunar-human = "gymnast.LunarLander.bin.human:main"
-lunar-controller = "gymnast.LunarLander.bin.controller:main"
+lunar-heuristic = "gymnast.LunarLander.bin.heuristic:main"
