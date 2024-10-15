@@ -287,14 +287,24 @@ def cmd_train(
     save_listener.stop()
     env.close()
 
+    # Save results.
+    print(f"Saved weights to {save_to}")
+    save_checkpoint(
+        env_id,
+        model,
+        optimizer,
+        seed,
+        current_epoch,
+        batch_size,
+        learning_rate,
+        hidden_layers,
+        save_to,
+    )
+
     # Run final model.
     env = gym.make(env_id, render_mode="human")
     explore_one_episode(env, model)
     env.close()
-
-    # Save results.
-    torch.save(model.state_dict(), save_to)
-    print(f"Saved weights to {save_to}")
 
 
 def cmd_infer(load_from: str, seed: int | None):
