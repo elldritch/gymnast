@@ -10,6 +10,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
+cartpole-vpg = "gymnast.CartPole.bin.vpg:main"
 lunar-vpg = "gymnast.LunarLander.bin.vpg:main"
 lunar-human = "gymnast.LunarLander.bin.human:main"
 lunar-heuristic = "gymnast.LunarLander.bin.heuristic:main"
