@@ -54,6 +54,8 @@ def explore_one_episode(
     observation: np.ndarray
     observation, _ = env.reset()
     episode_over = False
+    prev_reward_shaping = None
+    landed_count = 0
     while not episode_over:
         observations.append(observation.copy())
 
@@ -62,10 +64,46 @@ def explore_one_episode(
         actions.append(action)
 
         observation, reward, terminated, truncated, _ = env.step(action)
-        rewards.append(np.float64(reward))
+        reward = np.float64(reward)
+
+        # Synthetic reward calculation.
+        synthetic_reward = 0
+
+        # Shaping and fuel cost are taken from the environment directly. This
+        # segment is from https://github.com/openai/gym/blob/dcd185843a62953e27c2d54dc8c2d647d604b635/gym/envs/box2d/lunar_lander.py#L572-L596
+        [x, y, dx, dy, theta, omega, r, l] = observation
+        v = np.sqrt(dx**2 + dy**2)
+        shaping = (
+            -100 * np.sqrt(x**2 + y**2) - 100 * v - 100 * abs(theta) + 10 * r + 10 * l
+        )
+        if prev_reward_shaping is not None:
+            synthetic_reward = shaping - prev_reward_shaping
+        prev_reward_shaping = shaping
+
+        if action == 2:
+            synthetic_reward -= 0.3
+        elif action == 1 or action == 3:
+            synthetic_reward -= 0.03
+
+        if reward == 100 or reward == -100:
+            synthetic_reward = reward
+
+        # Penalize bouncing and not turning off engine on landing.
+        if v < 0.2 and (y < 0.05 or (r and l)):
+            landed_count += 1
+            if action != 0:
+                synthetic_reward -= 0.01 * landed_count
+
+        synthetic_reward = np.float64(synthetic_reward)
+
+        rewards.append(synthetic_reward)
 
         if verbose:
-            print_step(action, observation, reward)
+            print_step(action, observation, reward, synthetic_reward)
+            if terminated:
+                print("Terminated")
+            if truncated:
+                print("Truncated")
 
         episode_over = terminated or truncated
 

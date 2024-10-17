@@ -3,7 +3,15 @@ from typing import SupportsFloat
 import numpy as np
 
 
-def print_step(action: int, observation: np.ndarray, reward: SupportsFloat):
+def print_step(
+    action: int,
+    observation: np.ndarray,
+    reward: SupportsFloat,
+    synthetic_reward: SupportsFloat | None = None,
+):
+    [x, y, dx, dy, theta, omega, r, l] = observation
+    d = np.sqrt(x**2 + y**2)
+    v = np.sqrt(dx**2 + dy**2)
     action_name = (
         "_"
         if action == 0
@@ -13,8 +21,32 @@ def print_step(action: int, observation: np.ndarray, reward: SupportsFloat):
             else "^" if action == 2 else ">" if action == 3 else "ERROR"
         )
     )
-    r = "R" if observation[6] == 1.0 else " " if observation[6] == 0.0 else "ERROR"
-    l = "L" if observation[7] == 1.0 else " " if observation[7] == 0.0 else "ERROR"
+    r_show = "R" if r == 1.0 else " " if r == 0.0 else "ERROR"
+    l_show = "L" if l == 1.0 else " " if l == 0.0 else "ERROR"
     print(
-        f"x: {observation[0]: .3f} y: {observation[1]: .3f} x': {observation[2]: .3f} y': {observation[3]: .3f} θ: {observation[4]: .3f} ω: {observation[5]: .3f} {r} {l} reward: {reward: 8.3f} action: {action_name}"
+        " ".join(
+            (
+                [
+                    f"x: {x: .3f}",
+                    f"vx: {dx: .3f}",
+                    f"y: {y: .3f}",
+                    f"vy: {dy: .3f}",
+                    f"d: {d: .3f}",
+                    f"v: {v: .3f}",
+                    f"θ: {theta: .3f}",
+                    f"ω: {omega: .3f}",
+                    r_show,
+                    l_show,
+                    f"reward: {reward: 8.3f}",
+                ]
+                + (
+                    [f"reward': {synthetic_reward: 8.3f}"]
+                    if synthetic_reward is not None
+                    else []
+                )
+                + [
+                    f"action: {action_name}",
+                ]
+            ),
+        )
     )
