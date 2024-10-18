@@ -19,7 +19,6 @@ def print_step(
                     f"v: {v: .3f}",
                     f"θ: {theta: .3f}",
                     f"ω: {omega: .3f}",
-                    f"reward: {reward: 8.3f}",
                 ]
                 + (
                     [f"reward': {synthetic_reward: 8.3f}"]
