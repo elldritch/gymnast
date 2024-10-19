@@ -18,9 +18,6 @@ class PolicyGradientAgent(nn.Module):
     agents expose an action distribution for calculating gradient.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
-
     @abstractmethod
     def act(self, observation: torch.Tensor) -> torch.distributions.Distribution:
         """
@@ -185,8 +182,8 @@ def argparser() -> tuple[ArgumentParser, ArgumentParser]:
     trainP.add_argument("--batch_size", type=int)
     trainP.add_argument("--learning_rate", type=float)
     trainP.add_argument("--hidden_layers", type=int, nargs="+")
-    trainP.add_argument("--load_from", type=str)
     trainP.add_argument("--checkpoint_folder", type=str, required=True)
+    trainP.add_argument("--load_save_id", type=str)
     trainP.add_argument("--save_id", type=str, required=True)
 
     inferP = subparsers.add_parser("infer")

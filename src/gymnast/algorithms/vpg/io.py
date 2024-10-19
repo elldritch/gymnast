@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 import os
 import time
-from typing import Any, Callable, SupportsFloat
+from typing import Any, Callable, Dict, Mapping, SupportsFloat
 
 import numpy as np
 import torch
@@ -64,6 +65,22 @@ def save_checkpoint[
     print(f"Done saving checkpoint ID: {checkpoint_id}")
 
 
+@dataclass
+class Checkpoint[Observation: np.ndarray, Action: int | float, Reward: SupportsFloat]:
+    env: str
+    agent_args: list[Any]
+    optimizer_args: list[Any]
+    agent_state_dict: Mapping[str, Any]
+    optimizer_state_dict: Dict[str, Any]
+    gradient_fn: Callable[
+        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
+        torch.Tensor,
+    ]
+    seed: int
+    elapsed_epochs: int
+    batch_size: int
+
+
 def load_checkpoint[
     Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
 ](
@@ -72,17 +89,13 @@ def load_checkpoint[
     current_agent_class: type[PolicyGradientAgent] | None = None,
     current_optimizer_class: type[torch.optim.Optimizer] | None = None,
     current_gradient_fn: (
-        Callable[[list[list[tuple[Observation, Action, Reward]]]], torch.Tensor] | None
+        Callable[
+            [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
+            torch.Tensor,
+        ]
+        | None
     ) = None,
-) -> tuple[
-    str,
-    PolicyGradientAgent,
-    torch.optim.Optimizer,
-    Callable[[list[list[tuple[Observation, Action, Reward]]]], torch.Tensor],
-    int,
-    int,
-    int,
-]:
+) -> Checkpoint[Observation, Action, Reward]:
     # Load information from dill pickle.
     with open(os.path.join(checkpoint_folder, f"info_{checkpoint_id}.pkl"), "rb") as f:
         pkl = load(f)
@@ -105,9 +118,7 @@ def load_checkpoint[
     batch_size = pkl["batch_size"]
     assert isinstance(batch_size, int)
 
-    # Deserialize stateful objects.
-    assert "agent_class" in pkl
-    agent_class = pkl["agent_class"]
+    # Deserialize and check agent and optimizer.
     assert "agent_args" in pkl
     agent_args = pkl["agent_args"]
     assert isinstance(agent_args, list)
@@ -122,10 +133,7 @@ def load_checkpoint[
             print(current_agent_class_source)
             print("SAVED:")
             print(agent_class_source)
-    agent = agent_class(*agent_args)
 
-    assert "optimizer_class" in pkl
-    optimizer_class = pkl["optimizer_class"]
     assert "optimizer_args" in pkl
     optimizer_args = pkl["optimizer_args"]
     assert isinstance(optimizer_args, list)
@@ -142,11 +150,11 @@ def load_checkpoint[
             print(current_optimizer_class_source)
             print("SAVED:")
             print(optimizer_class_source)
-    optimizer = optimizer_class(agent.parameters(), *optimizer_args)
 
     assert "gradient_fn" in pkl
     gradient_fn: Callable[
-        [list[list[tuple[Observation, Action, Reward]]]], torch.Tensor
+        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
+        torch.Tensor,
     ] = pkl["gradient_fn"]
     assert callable(gradient_fn)
     if current_gradient_fn is not None:
@@ -164,12 +172,23 @@ def load_checkpoint[
             print(gradient_fn_source)
 
     # Load model and optimizer state.
-    pt = torch.load(os.path.join(checkpoint_folder, f"state_dict_{checkpoint_id}.pt"))
+    pt = torch.load(
+        os.path.join(checkpoint_folder, f"state_dict_{checkpoint_id}.pt"),
+        weights_only=True,
+    )
     assert "checkpoint_format" in pt
     assert pt["checkpoint_format"] == CHECKPOINT_FORMAT
     assert "model_state_dict" in pt
-    agent.load_state_dict(pt["model_state_dict"])
     assert "optimizer_state_dict" in pt
-    optimizer.load_state_dict(pt["optimizer_state_dict"])
 
-    return (env, agent, optimizer, gradient_fn, seed, elapsed_epochs, batch_size)
+    return Checkpoint(
+        env,
+        agent_args,
+        optimizer_args,
+        pt["model_state_dict"],
+        pt["optimizer_state_dict"],
+        gradient_fn,
+        seed,
+        elapsed_epochs,
+        batch_size,
+    )
