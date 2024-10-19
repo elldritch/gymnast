@@ -17,6 +17,7 @@ class PolicyGradientAgent(nn.Module):
     Base class for agents that use policy gradient descent. Policy gradient
     agents expose an action distribution for calculating gradient.
     """
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -40,14 +41,15 @@ def explore_one_episode[
     observation, _ = env.reset()
     episode_over = False
     while not episode_over:
-        action = agent.act(torch.from_numpy(observation.copy()).to("cuda")).sample().item()
+        action = agent.act(torch.from_numpy(observation).to("cuda")).sample().item()
         assert isinstance(action, int) or isinstance(action, float)
         action = cast(Action, action)
 
-        observation, reward, terminated, truncated, _ = env.step(action)
+        next_observation, reward, terminated, truncated, _ = env.step(action)
         reward = cast(Reward, reward)
 
         steps.append((observation.copy(), action, reward))
+        observation = next_observation
 
         if render_step is not None:
             render_step(observation, action, reward)
@@ -71,8 +73,8 @@ def train_one_epoch[
         [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
         torch.Tensor,
     ],
+    epoch_batch_size: int,
     render_step: Callable[[Observation, Action, Reward], None] | None = None,
-    epoch_batch_size: int = 5000,
 ) -> tuple[torch.Tensor, list[list[tuple[Observation, Action, Reward]]]]:
     episodes: list[list[tuple[Observation, Action, Reward]]] = []
     steps_count = 0
@@ -121,7 +123,7 @@ def train[
     save_listener.start()
     for i in range(epochs_to_train):
         gradient, episodes = train_one_epoch(
-            env, agent, optimizer, gradient_fn, render_step, epoch_batch_size
+            env, agent, optimizer, gradient_fn, epoch_batch_size, render_step
         )
         returns = [
             sum([float(reward) for (_, _, reward) in episode]) for episode in episodes
