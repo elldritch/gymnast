@@ -91,13 +91,12 @@ def main():
                 args.checkpoint_folder,
                 args.save_id,
             )
-            pass
 
         # Train.
         print(
             " ".join(
                 [
-                    "Initializing with parameters:",
+                    "Initializing training with parameters:",
                     f"seed={seed}",
                     f"start_epoch={start_epoch}",
                     f"epochs_to_train={epochs_to_train}",
@@ -120,11 +119,38 @@ def main():
             epoch_batch_size,
         )
     elif args.cmd == "infer":
-        # infer(args.load_from, args.seed)
-        pass
+        # Load from checkpoint.
+        checkpoint = load_checkpoint(
+            args.checkpoint_folder,
+            args.save_id,
+            DiscreteActionAgent,
+            torch.optim.Adam,
+            gradient.reward_to_go,
+        )
+        assert checkpoint.env == ENV_ID
+
+        # Parse hyperparameters that can be loaded from checkpoint.
+        seed = args.seed or checkpoint.seed
+        assert isinstance(seed, int)
+
+        # Initialize model.
+        agent = DiscreteActionAgent(*checkpoint.agent_args).to("cuda")
+        agent.load_state_dict(checkpoint.agent_state_dict)
+
+        # Run inference.
+        print(
+            " ".join(
+                [
+                    "Initializing inference with parameters:",
+                    f"seed={seed}",
+                    f"agent_args={checkpoint.agent_args}",
+                    f"elapsed_epochs={checkpoint.elapsed_epochs}",
+                ]
+            )
+        )
+        infer(ENV_ID, agent, seed, render_step)
     else:
         raise NotImplementedError(f"Unknown subcommand: {args.cmd}")
-    pass
 
 
 def render_step(observation: np.ndarray, action: int, reward: SupportsFloat):

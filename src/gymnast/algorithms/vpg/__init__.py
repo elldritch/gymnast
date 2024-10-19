@@ -166,8 +166,8 @@ def infer[
     agent.eval()
 
     # Run inference.
-    _, _, rewards = explore_one_episode(env, agent, render_step)
-    print(f"Return: {sum(map(float, rewards))}")
+    steps = explore_one_episode(env, agent, render_step)
+    print(f"Return: {sum([float(reward) for (_, _, reward) in steps])}")
     env.close()
 
 
