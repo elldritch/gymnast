@@ -29,7 +29,7 @@ class InputListener(threading.Thread):
 
 
 class NeuralNet(nn.Module):
-    def __init__(self, layer_sizes: list[int], activation: nn.Module = nn.Softplus()):
+    def __init__(self, layer_sizes: list[int], activation: nn.Module = nn.Tanh()):
         super().__init__()
         layers: list[nn.Module] = []
         for i in range(len(layer_sizes) - 1):
@@ -49,7 +49,9 @@ class NeuralNet(nn.Module):
         if x.ndim == 1:
             x = x.unsqueeze(0)
         prediction: torch.Tensor = self(x)
-        return torch.distributions.Normal(prediction[:, 0], prediction[:, 1])
+        return torch.distributions.Normal(
+            prediction[:, 0], torch.log(1 + torch.exp(prediction[:, 1]))
+        )
 
 
 def explore_one_episode(
@@ -62,8 +64,6 @@ def explore_one_episode(
     observation: np.ndarray
     observation, _ = env.reset()
     episode_over = False
-    prev_reward_shaping = None
-    landed_count = 0
     while not episode_over:
         observation = observation.astype(np.float32)
         observations.append(observation.copy())
