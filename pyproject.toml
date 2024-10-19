@@ -4,6 +4,7 @@ version = "0.1.0"
 readme = "README.md"
 requires-python = "~=3.12"
 dependencies = [
+    "dill>=0.3.9",
     "gymnasium[box2d,mujoco]>=1.0.0",
     "torch>=2.4.1",
 ]
@@ -14,7 +15,7 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 inverted-pendulum-vpg = "gymnast.InvertedPendulum.bin.vpg:main"
-cart-pole-vpg = "gymnast.CartPole.bin.vpg:main"
+cart-pole-vpg = "gymnast.environments.CartPole.bin.vpg:main"
 lunar-lander-vpg = "gymnast.LunarLander.bin.vpg:main"
 lunar-lander-human = "gymnast.LunarLander.bin.human:main"
 lunar-lander-heuristic = "gymnast.LunarLander.bin.heuristic:main"
