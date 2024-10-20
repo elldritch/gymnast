@@ -1,13 +1,16 @@
 from typing import SupportsFloat
 
 import numpy as np
+from numpy.typing import NDArray
 import torch
 
 from gymnast.algorithms.vpg import PolicyGradientAgent
 
 
 def simple[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     agent: PolicyGradientAgent, episodes: list[list[tuple[Observation, Action, Reward]]]
 ) -> torch.Tensor:
@@ -24,16 +27,18 @@ def simple[
         weights += [episode_return] * len(episode)
 
     observations_tensor = torch.from_numpy(np.stack(observations, axis=0)).to("cuda")
-    actions_tensor = torch.as_tensor(actions).to("cuda")
+    actions_tensor = torch.as_tensor(np.array(actions)).to("cuda")
     weights_tensor = torch.as_tensor(weights).to("cuda")
 
     return -(
-        agent.act(observations_tensor).log_prob(actions_tensor) * weights_tensor
+        agent.predict(observations_tensor).log_prob(actions_tensor) * weights_tensor
     ).mean()
 
 
 def reward_to_go[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     agent: PolicyGradientAgent, episodes: list[list[tuple[Observation, Action, Reward]]]
 ) -> torch.Tensor:
@@ -57,9 +62,9 @@ def reward_to_go[
         weights += episode_weights[::-1]
 
     observations_tensor = torch.from_numpy(np.stack(observations, axis=0)).to("cuda")
-    actions_tensor = torch.as_tensor(actions).to("cuda")
+    actions_tensor = torch.as_tensor(np.array(actions)).to("cuda")
     weights_tensor = torch.as_tensor(weights).to("cuda")
 
     return -(
-        agent.act(observations_tensor).log_prob(actions_tensor) * weights_tensor
+        agent.predict(observations_tensor).log_prob(actions_tensor) * weights_tensor
     ).mean()

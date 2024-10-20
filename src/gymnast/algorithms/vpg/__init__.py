@@ -1,10 +1,10 @@
 from abc import abstractmethod
-from argparse import ArgumentParser
 from collections.abc import Callable
 from typing import SupportsFloat, cast
 
 import gymnasium as gym
 import numpy as np
+from numpy.typing import NDArray
 import torch
 from torch import nn
 
@@ -18,16 +18,28 @@ class PolicyGradientAgent(nn.Module):
     agents expose an action distribution for calculating gradient.
     """
 
+    def __init__(self):
+        super().__init__()
+
     @abstractmethod
-    def act(self, observation: torch.Tensor) -> torch.distributions.Distribution:
+    def predict(self, observation: torch.Tensor) -> torch.distributions.Distribution:
         """
         Given an observation, return an action distribution.
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def sample(self, observation: torch.Tensor) -> int | NDArray[np.float32]:
+        """
+        Given an observation, return an action.
+        """
+        raise NotImplementedError
+
 
 def explore_one_episode[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     env: gym.Env[Observation, Action],
     agent: PolicyGradientAgent,
@@ -38,8 +50,8 @@ def explore_one_episode[
     observation, _ = env.reset()
     episode_over = False
     while not episode_over:
-        action = agent.act(torch.from_numpy(observation).to("cuda")).sample().item()
-        assert isinstance(action, int) or isinstance(action, float)
+        observation = observation.astype(np.float32)
+        action = agent.sample(torch.from_numpy(observation.copy()).to("cuda"))
         action = cast(Action, action)
 
         next_observation, reward, terminated, truncated, _ = env.step(action)
@@ -61,7 +73,9 @@ def explore_one_episode[
 
 
 def train_one_epoch[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     env: gym.Env[Observation, Action],
     agent: PolicyGradientAgent,
@@ -90,7 +104,9 @@ def train_one_epoch[
 
 
 def train[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     env_id: str,
     agent: PolicyGradientAgent,
@@ -153,7 +169,9 @@ def train[
 
 
 def infer[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     env_id: str,
     agent: PolicyGradientAgent,
@@ -169,26 +187,3 @@ def infer[
     steps = explore_one_episode(env, agent, render_step)
     print(f"Return: {sum([float(reward) for (_, _, reward) in steps])}")
     env.close()
-
-
-def argparser() -> tuple[ArgumentParser, ArgumentParser]:
-    # Parse hyperparameters.
-    parser = ArgumentParser()
-    subparsers = parser.add_subparsers(dest="cmd")
-
-    trainP = subparsers.add_parser("train")
-    trainP.add_argument("--seed", type=int)
-    trainP.add_argument("--epochs", type=int)
-    trainP.add_argument("--batch_size", type=int)
-    trainP.add_argument("--learning_rate", type=float)
-    trainP.add_argument("--hidden_layers", type=int, nargs="+")
-    trainP.add_argument("--checkpoint_folder", type=str, required=True)
-    trainP.add_argument("--load_save_id", type=str)
-    trainP.add_argument("--save_id", type=str, required=True)
-
-    inferP = subparsers.add_parser("infer")
-    inferP.add_argument("--seed", type=int)
-    inferP.add_argument("--checkpoint_folder", type=str, required=True)
-    inferP.add_argument("--save_id", type=str, required=True)
-
-    return (parser, trainP)

@@ -4,7 +4,9 @@ import time
 from typing import Any, Callable, Dict, Mapping, SupportsFloat
 
 import numpy as np
+from numpy.typing import NDArray
 import torch
+from torch.optim.optimizer import StateDict
 import dill
 from dill import dump, load
 
@@ -14,7 +16,9 @@ CHECKPOINT_FORMAT = 1
 
 
 def save_checkpoint[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     env_id: str,
     agent: PolicyGradientAgent,
@@ -66,12 +70,16 @@ def save_checkpoint[
 
 
 @dataclass
-class Checkpoint[Observation: np.ndarray, Action: int | float, Reward: SupportsFloat]:
+class Checkpoint[
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
+]:
     env: str
     agent_args: list[Any]
     optimizer_args: list[Any]
     agent_state_dict: Mapping[str, Any]
-    optimizer_state_dict: Dict[str, Any]
+    optimizer_state_dict: StateDict
     gradient_fn: Callable[
         [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
         torch.Tensor,
@@ -82,7 +90,9 @@ class Checkpoint[Observation: np.ndarray, Action: int | float, Reward: SupportsF
 
 
 def load_checkpoint[
-    Observation: np.ndarray, Action: int | float, Reward: SupportsFloat
+    Observation: NDArray[np.float32] | NDArray[np.float64],
+    Action: int | NDArray[np.float32],
+    Reward: SupportsFloat,
 ](
     checkpoint_folder: str,
     checkpoint_id: str,

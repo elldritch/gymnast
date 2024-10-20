@@ -1,3 +1,5 @@
+import numpy as np
+from numpy.typing import NDArray
 import torch
 from torch import nn
 
@@ -24,13 +26,17 @@ class ContinuousActionAgent(PolicyGradientAgent):
     def forward(self, x: torch.Tensor):
         return self.layers(x)
 
-    def act(self, observation: torch.Tensor) -> torch.distributions.Distribution:
+    def predict(self, observation: torch.Tensor) -> torch.distributions.Distribution:
         if observation.ndim == 1:
             observation = observation.unsqueeze(0)
-        action: torch.Tensor = self(observation)
+        prediction: torch.Tensor = self(observation)
         return torch.distributions.Normal(
-            action[:, 0], torch.log(1 + torch.exp(action[:, 1]))
+            prediction[:, 0], torch.log(1 + torch.exp(prediction[:, 1]))
         )
+
+    def sample(self, observation: torch.Tensor) -> NDArray[np.float32]:
+        action = self.predict(observation).sample().cpu().numpy().astype(np.float32)
+        return action
 
 
 class DiscreteActionAgent(PolicyGradientAgent):
@@ -44,6 +50,9 @@ class DiscreteActionAgent(PolicyGradientAgent):
     def forward(self, x: torch.Tensor):
         return self.layers(x)
 
-    def act(self, observation: torch.Tensor) -> torch.distributions.Categorical:
-        action: torch.Tensor = self(observation)
-        return torch.distributions.Categorical(logits=action)
+    def predict(self, observation: torch.Tensor) -> torch.distributions.Categorical:
+        prediction: torch.Tensor = self(observation)
+        return torch.distributions.Categorical(logits=prediction)
+
+    def sample(self, observation: torch.Tensor) -> int:
+        return int(self.predict(observation).sample().item())
