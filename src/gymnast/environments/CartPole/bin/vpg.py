@@ -2,7 +2,7 @@ from typing import SupportsFloat
 import numpy as np
 import torch
 
-from gymnast.algorithms.vpg import gradient
+from gymnast.algorithms.vpg import weights
 from gymnast.algorithms.vpg.cli import main_base, parse_args_nn_adam
 from gymnast.algorithms.vpg.models import DiscreteActionAgent
 
@@ -15,7 +15,7 @@ def main():
         ENV_ID,
         DiscreteActionAgent,
         torch.optim.Adam,
-        gradient.reward_to_go,
+        weights.reward_to_go,
         args,
         agent_args,
         optimizer_args,

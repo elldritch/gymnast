@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 import os
 import time
-from typing import Any, Callable, Dict, Mapping, SupportsFloat
+from typing import Any, Callable, Mapping
 
 import numpy as np
-from numpy.typing import NDArray
 import torch
 from torch.optim.optimizer import StateDict
 import dill
@@ -15,20 +14,13 @@ from gymnast.algorithms.vpg import PolicyGradientAgent
 CHECKPOINT_FORMAT = 1
 
 
-def save_checkpoint[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-](
+def save_checkpoint(
     env_id: str,
     agent: PolicyGradientAgent,
     agent_args: list[Any],
     optimizer: torch.optim.Optimizer,
     optimizer_args: list[Any],
-    gradient_fn: Callable[
-        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
-        torch.Tensor,
-    ],
+    weights_fn: Callable[[list[np.float32]], list[float]],
     seed: int,
     batch_size: int,
     current_epoch: int,
@@ -61,8 +53,8 @@ def save_checkpoint[
                 "agent_args": agent_args,
                 "optimizer_class_source": dill.source.getsource(type(optimizer)),
                 "optimizer_args": optimizer_args,
-                "gradient_fn": gradient_fn,
-                "gradient_fn_source": dill.source.getsource(gradient_fn),
+                "weights_fn": weights_fn,
+                "weights_fn_source": dill.source.getsource(weights_fn),
             },
             f,
         )
@@ -70,42 +62,25 @@ def save_checkpoint[
 
 
 @dataclass
-class Checkpoint[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-]:
+class Checkpoint:
     env: str
     agent_args: list[Any]
     optimizer_args: list[Any]
     agent_state_dict: Mapping[str, Any]
     optimizer_state_dict: StateDict
-    gradient_fn: Callable[
-        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
-        torch.Tensor,
-    ]
+    weights_fn: Callable[[list[np.float32]], list[float]]
     seed: int
     elapsed_epochs: int
     batch_size: int
 
 
-def load_checkpoint[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-](
+def load_checkpoint(
     checkpoint_folder: str,
     checkpoint_id: str,
     current_agent_class: type[PolicyGradientAgent] | None = None,
     current_optimizer_class: type[torch.optim.Optimizer] | None = None,
-    current_gradient_fn: (
-        Callable[
-            [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
-            torch.Tensor,
-        ]
-        | None
-    ) = None,
-) -> Checkpoint[Observation, Action, Reward]:
+    current_weights_fn: Callable[[list[np.float32]], list[float]] | None = None,
+) -> Checkpoint:
     # Load information from dill pickle.
     with open(os.path.join(checkpoint_folder, f"info_{checkpoint_id}.pkl"), "rb") as f:
         pkl = load(f)
@@ -161,25 +136,22 @@ def load_checkpoint[
             print("SAVED:")
             print(optimizer_class_source)
 
-    assert "gradient_fn" in pkl
-    gradient_fn: Callable[
-        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
-        torch.Tensor,
-    ] = pkl["gradient_fn"]
-    assert callable(gradient_fn)
-    if current_gradient_fn is not None:
-        current_gradient_fn_source = dill.source.getsource(current_gradient_fn)
-        assert "gradient_fn_source" in pkl
-        gradient_fn_source = pkl["gradient_fn_source"]
-        assert isinstance(gradient_fn_source, str)
-        if current_gradient_fn_source != gradient_fn_source:
+    assert "weights_fn" in pkl
+    weights_fn: Callable[[list[np.float32]], list[float]] = pkl["weights_fn"]
+    assert callable(weights_fn)
+    if current_weights_fn is not None:
+        current_weights_fn_source = dill.source.getsource(current_weights_fn)
+        assert "weights_fn_source" in pkl
+        weights_fn_source = pkl["weights_fn_source"]
+        assert isinstance(weights_fn_source, str)
+        if current_weights_fn_source != weights_fn_source:
             print(
                 "WARNING: saved gradient function does not match current gradient function"
             )
             print("CURRENT:")
-            print(current_gradient_fn_source)
+            print(current_weights_fn_source)
             print("SAVED:")
-            print(gradient_fn_source)
+            print(weights_fn_source)
 
     # Load model and optimizer state.
     pt = torch.load(
@@ -197,7 +169,7 @@ def load_checkpoint[
         optimizer_args,
         pt["model_state_dict"],
         pt["optimizer_state_dict"],
-        gradient_fn,
+        weights_fn,
         seed,
         elapsed_epochs,
         batch_size,

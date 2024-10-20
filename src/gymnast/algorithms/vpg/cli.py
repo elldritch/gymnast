@@ -5,9 +5,15 @@ import numpy as np
 from numpy.typing import NDArray
 import torch
 
-from gymnast.algorithms.vpg import PolicyGradientAgent, infer, train
+from gymnast.algorithms.vpg import (
+    PolicyGradientAgent,
+    explore_one_episode,
+    train,
+    Observation,
+    Action,
+)
 from gymnast.algorithms.vpg.io import load_checkpoint, save_checkpoint
-from gymnast.utils import dimensions
+from gymnast.utils import dimensions, set_seeds
 
 
 def argparser_base() -> tuple[ArgumentParser, ArgumentParser]:
@@ -51,25 +57,19 @@ def parse_args_nn_adam(
         observation_dim, action_dim = dimensions(env)
 
         return args, [[observation_dim, *hidden_layers, action_dim]], [learning_rate]
-    return args, [], []
+    else:
+        return args, [], []
 
 
-def main_base[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-](
+def main_base(
     env_id: str,
     agent_class: type[PolicyGradientAgent],
     optimizer_class: type[torch.optim.Optimizer],
-    gradient_fn: Callable[
-        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
-        torch.Tensor,
-    ],
+    weights_fn: Callable[[list[np.float32]], list[float]],
     args: Namespace,
     agent_args_cli: list[Any],
     optimizer_args_cli: list[Any],
-    render_step: Callable[[Observation, Action, Reward], None],
+    render_step: Callable[[Observation, Action, np.float32], None],
 ):
     if args.cmd == "train":
         # Load from checkpoint.
@@ -80,7 +80,7 @@ def main_base[
                 args.load_save_id,
                 agent_class,
                 optimizer_class,
-                gradient_fn,
+                weights_fn,
             )
             assert checkpoint.env == env_id
 
@@ -100,13 +100,20 @@ def main_base[
         start_epoch = checkpoint.elapsed_epochs if checkpoint else 0
         assert isinstance(start_epoch, int)
 
-        gradient_fn = checkpoint.gradient_fn if checkpoint else gradient_fn
+        weights_fn = checkpoint.weights_fn if checkpoint else weights_fn
+
+        # Initialize environment and set seeds. We must seed before initializing
+        # the agent and optimizer so that those are reproducibly initialized
+        # when training from scratch.
+        env = gym.make(env_id, render_mode=None)
+        set_seeds(seed, start_epoch, env)
 
         # Initialize model.
         agent_args: list[Any] = checkpoint.agent_args if checkpoint else agent_args_cli
         agent = agent_class(*agent_args).to("cuda")
         if checkpoint:
             agent.load_state_dict(checkpoint.agent_state_dict)
+        agent.train()
 
         # Initialize optimizer.
         optimizer_args: list[Any] = (
@@ -123,7 +130,7 @@ def main_base[
                 agent_args,
                 optimizer,
                 optimizer_args,
-                gradient_fn,
+                weights_fn,
                 seed,
                 epoch_batch_size,
                 current_epoch,
@@ -146,17 +153,22 @@ def main_base[
             )
         )
         train(
-            env_id,
+            env,
             agent,
             optimizer,
-            gradient_fn,
+            weights_fn,
             None,
             save_progress,
             start_epoch,
             epochs_to_train,
-            seed,
             epoch_batch_size,
         )
+
+        # Run final model.
+        agent.eval()
+        env = gym.make(env_id, render_mode="human")
+        explore_one_episode(env, agent, render_step)
+        env.close()
     elif args.cmd == "infer":
         # Load from checkpoint.
         checkpoint = load_checkpoint(
@@ -164,7 +176,7 @@ def main_base[
             args.save_id,
             agent_class,
             optimizer_class,
-            gradient_fn,
+            weights_fn,
         )
         assert checkpoint.env == env_id
 
@@ -172,9 +184,14 @@ def main_base[
         seed = args.seed or checkpoint.seed
         assert isinstance(seed, int)
 
+        # Initialize environment.
+        env = gym.make(env_id, render_mode="human")
+        set_seeds(seed, 0, env)
+
         # Initialize model.
         agent = agent_class(*checkpoint.agent_args).to("cuda")
         agent.load_state_dict(checkpoint.agent_state_dict)
+        agent.eval()
 
         # Run inference.
         print(
@@ -187,6 +204,9 @@ def main_base[
                 ]
             )
         )
-        infer(env_id, agent, seed, render_step)
+        # Run inference.
+        steps = explore_one_episode(env, agent, render_step)
+        print(f"Return: {sum([float(reward) for (_, _, reward) in steps])}")
+        env.close()
     else:
         raise NotImplementedError(f"Unknown subcommand: {args.cmd}")

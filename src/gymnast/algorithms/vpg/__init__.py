@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections.abc import Callable
-from typing import SupportsFloat, cast
+from typing import SupportsFloat, TypeVar, cast
 
 import gymnasium as gym
 import numpy as np
@@ -9,7 +9,12 @@ import torch
 from torch import nn
 
 from gymnast.cli import InputListener
-from gymnast.utils import set_seeds
+from gymnast.utils import dimensions
+
+
+Observation = TypeVar("Observation", bound=NDArray[np.float32] | NDArray[np.float64])
+Action = TypeVar("Action", bound=int | NDArray[np.float32])
+Reward = TypeVar("Reward", bound=SupportsFloat)
 
 
 class PolicyGradientAgent(nn.Module):
@@ -29,36 +34,48 @@ class PolicyGradientAgent(nn.Module):
         raise NotImplementedError
 
     @abstractmethod
-    def sample(self, observation: torch.Tensor) -> int | NDArray[np.float32]:
+    def sample(
+        self, observation: torch.Tensor
+    ) -> Action:  # pyright: ignore [reportInvalidTypeVarUse]
         """
         Given an observation, return an action.
         """
         raise NotImplementedError
 
 
-def explore_one_episode[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-](
+def explore_one_episode(
     env: gym.Env[Observation, Action],
     agent: PolicyGradientAgent,
-    render_step: Callable[[Observation, Action, Reward], None] | None,
-) -> list[tuple[Observation, Action, Reward]]:
-    steps: list[tuple[Observation, Action, Reward]] = []
+    render_step: Callable[[Observation, Action, np.float32], None] | None,
+) -> tuple[list[NDArray[np.float32]], list[np.float32], list[np.float32]]:
+    observations_dim, _ = dimensions(env)
+
+    observations: list[NDArray[np.float32]] = []
+    actions: list[np.float32] = []
+    rewards: list[np.float32] = []
 
     observation, _ = env.reset()
     episode_over = False
     while not episode_over:
         observation = observation.astype(np.float32)
-        action = agent.sample(torch.from_numpy(observation.copy()).to("cuda"))
+        assert (observations_dim,) == observation.shape
+        observations.append(observation.copy())
+
+        action = agent.sample(torch.from_numpy(observation).to("cuda"))
+        if isinstance(action, np.ndarray):
+            assert len(action) == 1
+            item = action[0]
+            assert type(item) == np.float32
+            actions.append(item)
+        elif isinstance(action, int):
+            actions.append(np.float32(action))
+        else:
+            raise ValueError(f"Unknown action type: {type(action)}")
         action = cast(Action, action)
 
-        next_observation, reward, terminated, truncated, _ = env.step(action)
-        reward = cast(Reward, reward)
-
-        steps.append((observation.copy(), action, reward))
-        observation = next_observation
+        observation, reward, terminated, truncated, _ = env.step(action)
+        reward = np.float32(reward)
+        rewards.append(reward)
 
         if render_step is not None:
             render_step(observation, action, reward)
@@ -69,74 +86,74 @@ def explore_one_episode[
 
         episode_over = terminated or truncated
 
-    return steps
+    assert len(observations) == len(actions) == len(rewards)
+    return observations, actions, rewards
 
 
-def train_one_epoch[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-](
+def train_one_epoch(
     env: gym.Env[Observation, Action],
     agent: PolicyGradientAgent,
     optimizer: torch.optim.Optimizer,
-    gradient_fn: Callable[
-        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
-        torch.Tensor,
-    ],
+    weights_fn: Callable[[list[np.float32]], list[float]],
     epoch_batch_size: int,
-    render_step: Callable[[Observation, Action, Reward], None] | None = None,
-) -> tuple[torch.Tensor, list[list[tuple[Observation, Action, Reward]]]]:
-    episodes: list[list[tuple[Observation, Action, Reward]]] = []
-    steps_count = 0
+    render_step: Callable[[Observation, Action, np.float32], None] | None = None,
+) -> tuple[
+    torch.Tensor, list[list[tuple[NDArray[np.float32], np.float32, np.float32]]]
+]:
+    episodes: list[list[tuple[NDArray[np.float32], np.float32, np.float32]]] = []
+    epoch_observations: list[NDArray[np.float32]] = []
+    epoch_actions: list[np.float32] = []
+    epoch_weights: list[float] = []
 
-    while steps_count < epoch_batch_size:
-        episode = explore_one_episode(env, agent, render_step)
-        episodes.append(episode)
-        steps_count += len(episode)
+    while len(epoch_observations) < epoch_batch_size:
+        episode_observations, episode_actions, episode_rewards = explore_one_episode(
+            env, agent, render_step
+        )
+        episodes.append(
+            list(zip(episode_observations, episode_actions, episode_rewards))
+        )
+
+        epoch_observations += episode_observations
+        epoch_actions += episode_actions
+        epoch_weights += weights_fn(episode_rewards)
+
+    observations_tensor = torch.from_numpy(np.stack(epoch_observations, axis=0)).to(
+        "cuda"
+    )
+    actions_tensor = torch.as_tensor(epoch_actions).to("cuda")
+    weights_tensor = torch.as_tensor(epoch_weights).to("cuda")
 
     optimizer.zero_grad()
-    gradient = gradient_fn(agent, episodes)
+    gradient = -(
+        agent.predict(observations_tensor).log_prob(actions_tensor) * weights_tensor
+    ).mean()
     gradient.backward()
     optimizer.step()
 
     return (gradient, episodes)
 
 
-def train[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-](
-    env_id: str,
+def train(
+    env: gym.Env[Observation, Action],
     agent: PolicyGradientAgent,
     optimizer: torch.optim.Optimizer,
-    gradient_fn: Callable[
-        [PolicyGradientAgent, list[list[tuple[Observation, Action, Reward]]]],
-        torch.Tensor,
-    ],
-    render_step: Callable[[Observation, Action, Reward], None] | None,
+    weight_fn: Callable[[list[np.float32]], list[float]],
+    render_step: Callable[[Observation, Action, np.float32], None] | None,
     save_progress: Callable[[PolicyGradientAgent, int], None],
     start_epoch: int,
     epochs_to_train: int,
-    seed: int,
     epoch_batch_size: int,
 ):
-    # Initialize environment.
-    env: gym.Env = gym.make(env_id, render_mode=None)
-    set_seeds(seed, start_epoch, env)
-    agent.train()
-    current_epoch = start_epoch
-
     # Save checkpoint on keypress.
     save_listener = InputListener(lambda: save_progress(agent, current_epoch))
 
     # Run training.
     print(f" Epoch | {"Gradient":>12} | {"Return":>12} | {"Duration":>12}")
+    current_epoch = start_epoch
     save_listener.start()
     for i in range(epochs_to_train):
         gradient, episodes = train_one_epoch(
-            env, agent, optimizer, gradient_fn, epoch_batch_size, render_step
+            env, agent, optimizer, weight_fn, epoch_batch_size, render_step
         )
         returns = [
             sum([float(reward) for (_, _, reward) in episode]) for episode in episodes
@@ -153,7 +170,7 @@ def train[
                 ]
             )
         )
-        if current_epoch % 200 == 0 and current_epoch > 0:
+        if current_epoch % 20 == 0 and current_epoch > 0:
             save_progress(agent, current_epoch)
     print("Done")
     save_listener.stop()
@@ -161,29 +178,3 @@ def train[
 
     # Save results.
     save_progress(agent, current_epoch)
-
-    # Run final model.
-    env = gym.make(env_id, render_mode="human")
-    explore_one_episode(env, agent, render_step)
-    env.close()
-
-
-def infer[
-    Observation: NDArray[np.float32] | NDArray[np.float64],
-    Action: int | NDArray[np.float32],
-    Reward: SupportsFloat,
-](
-    env_id: str,
-    agent: PolicyGradientAgent,
-    seed: int,
-    render_step: Callable[[Observation, Action, Reward], None] | None,
-):
-    # Initialize environment.
-    env: gym.Env[Observation, Action] = gym.make(env_id, render_mode="human")
-    set_seeds(seed, 0, env)
-    agent.eval()
-
-    # Run inference.
-    steps = explore_one_episode(env, agent, render_step)
-    print(f"Return: {sum([float(reward) for (_, _, reward) in steps])}")
-    env.close()
