@@ -3,7 +3,7 @@ import argparse
 import gymnasium as gym
 import numpy as np
 
-from gymnast.LunarLander.lib import print_step
+from gymnast.environments.LunarLander import render_step
 
 
 def set_seeds(seed: int, env: gym.Env):
@@ -63,7 +63,7 @@ def main():
         episode_return += float(reward)
         episode_over = terminated or truncated
 
-        print_step(action, observation, reward)
+        render_step(observation, action, reward)
 
     print(f"Return: {episode_return}")
 

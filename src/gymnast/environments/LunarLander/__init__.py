@@ -3,12 +3,7 @@ from typing import SupportsFloat
 import numpy as np
 
 
-def print_step(
-    action: int,
-    observation: np.ndarray,
-    reward: SupportsFloat,
-    synthetic_reward: SupportsFloat | None = None,
-):
+def render_step(observation: np.ndarray, action: int, reward: SupportsFloat):
     [x, y, dx, dy, theta, omega, r, l] = observation
     d = np.sqrt(x**2 + y**2)
     v = np.sqrt(dx**2 + dy**2)
@@ -38,13 +33,6 @@ def print_step(
                     r_show,
                     l_show,
                     f"reward: {reward: 8.3f}",
-                ]
-                + (
-                    [f"reward': {synthetic_reward: 8.3f}"]
-                    if synthetic_reward is not None
-                    else []
-                )
-                + [
                     f"action: {action_name}",
                 ]
             ),

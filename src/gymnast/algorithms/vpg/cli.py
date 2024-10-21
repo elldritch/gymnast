@@ -205,8 +205,8 @@ def main_base(
             )
         )
         # Run inference.
-        steps = explore_one_episode(env, agent, render_step)
-        print(f"Return: {sum([float(reward) for (_, _, reward) in steps])}")
+        observations, actions, rewards = explore_one_episode(env, agent, render_step)
+        print(f"Return: {sum(rewards)}")
         env.close()
     else:
         raise NotImplementedError(f"Unknown subcommand: {args.cmd}")
