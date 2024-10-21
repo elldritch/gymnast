@@ -123,6 +123,11 @@ def main_base(
         if checkpoint:
             optimizer.load_state_dict(checkpoint.optimizer_state_dict)
 
+        # Reset seeds after initialization. Otherwise, runs that use newly
+        # initialized models will be inconsistent from runs that load
+        # checkpoints.
+        set_seeds(seed, start_epoch, env)
+
         def save_progress(agent: PolicyGradientAgent, current_epoch: int):
             save_checkpoint(
                 env_id,

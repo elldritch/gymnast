@@ -1,3 +1,4 @@
+import random
 import gymnasium as gym
 import numpy as np
 import torch
@@ -19,9 +20,10 @@ def _space_dimensions(space: gym.Space) -> int:
 
 
 def set_seeds(seed: int, start_epoch: int, env: gym.Env):
-    torch.use_deterministic_algorithms(True)
-    torch.manual_seed(seed)
+    random.seed(seed)
     np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
     env.reset(seed=seed)
     # Otherwise, using the same seed will cause us to replay previously seen
     # examples when we load from checkpoint.
