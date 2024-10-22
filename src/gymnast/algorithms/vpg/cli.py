@@ -33,6 +33,7 @@ def argparser_base() -> tuple[ArgumentParser, ArgumentParser]:
     inferP.add_argument("--seed", type=int)
     inferP.add_argument("--checkpoint_folder", type=str, required=True)
     inferP.add_argument("--save_id", type=str, required=True)
+    inferP.add_argument("--video_folder", type=str, default=None)
 
     return (parser, trainP)
 
@@ -191,6 +192,12 @@ def main_base(
 
         # Initialize environment.
         env = gym.make(env_id, render_mode="human")
+        if args.video_folder:
+            env = gym.wrappers.RecordVideo(
+                gym.make(env_id, render_mode="rgb_array"),
+                args.video_folder,
+                name_prefix=f"{env_id}_{checkpoint.elapsed_epochs}_{seed}",
+            )
         set_seeds(seed, 0, env)
 
         # Initialize model.

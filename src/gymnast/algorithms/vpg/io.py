@@ -46,7 +46,7 @@ def save_checkpoint(
     checkpoint_folder: str,
     save_id: str,
 ):
-    checkpoint_id = f"{save_id}_{current_epoch}_{int(time.time())}"
+    checkpoint_id = f"{env_id}_{save_id}_{current_epoch}_{int(time.time())}"
     checkpoint_path = os.path.join(checkpoint_folder, checkpoint_id)
 
     print(f"Saving checkpoint ID: {checkpoint_id}")
