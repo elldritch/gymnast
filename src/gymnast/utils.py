@@ -19,6 +19,25 @@ def _space_dimensions(space: gym.Space) -> int:
         raise NotImplementedError("Space type not supported.")
 
 
+def states(env: gym.Env) -> tuple[int, int]:
+    observations_states = _space_states(env.observation_space)
+    actions_states = _space_states(env.action_space)
+    return (observations_states, actions_states)
+
+
+def _space_states(space: gym.Space) -> int:
+    if isinstance(space, gym.spaces.Discrete):
+        return int(space.n)
+    elif isinstance(space, gym.spaces.Tuple):
+        space_states = [_space_states(s) for s in space.spaces]
+        prod = 1
+        for s in space_states:
+            prod *= s
+        return prod
+    else:
+        raise NotImplementedError("Space type not supported.")
+
+
 def set_seeds(seed: int, start_epoch: int, env: gym.Env):
     random.seed(seed)
     np.random.seed(seed)
